@@ -1,0 +1,10 @@
+{
+  "platform": {
+    "apiRuntime": "node:22"
+  },
+  "applicationSettings": {
+    "PORT": {
+      "value": "8080"
+    }
+  }
+} 

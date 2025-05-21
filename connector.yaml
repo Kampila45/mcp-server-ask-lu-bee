@@ -1,0 +1,58 @@
+swagger: "2.0"
+info:
+  title: MSSQL MCP Server
+  description: Access MSSQL database using MCP server. Query tables, get schema information, and execute SQL queries.
+  version: "1.0"
+host: dummyurl.azurewebsites.net
+basePath: /
+schemes:
+  - https
+definitions:
+  QueryResponse:
+    type: object
+    description: Standard response format for MCP protocol messages
+    properties:
+      jsonrpc:
+        type: string
+        description: JSON-RPC version identifier, typically "2.0"
+      id:
+        type: string
+        description: Unique identifier for the request-response pair
+      method:
+        type: string
+        description: The method/action being called or responded to
+      params:
+        type: object
+        description: Parameters sent with the request
+      result:
+        type: object
+        description: Results returned from a successful operation
+      error:
+        type: object
+        description: Error information if the operation was not successful
+paths:
+  /sse:
+    get:
+      summary: MSSQL MCP Server
+      description: Trigger this action when a user needs data from the MSSQL database. Use this to query database tables, retrieve data, get table schemas, or execute read-only SQL queries. Appropriate when users ask about business data, reports, customer information, or any information stored in SQL Server.
+      parameters:
+        - in: query
+          name: sessionId
+          type: string
+          required: false
+          description: Optional session identifier. If not provided, a new session will be created.
+      produces:
+        - application/json
+      responses:
+        "200":
+          description: Immediate Response for successful connection
+          schema:
+            $ref: "#/definitions/QueryResponse"
+        "201":
+          description: Created and will follow callback
+      operationId: MSSQLMCP
+      tags:
+        - Agentic
+        - McpSse
+securityDefinitions: {}
+security: [] 

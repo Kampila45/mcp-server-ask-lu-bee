@@ -1,0 +1,27 @@
+{
+  "name": "jokes-sse",
+  "version": "1.0.0",
+  "description": "Jokes MCP with SSE",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node-esm src/index.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.9.0",
+    "dotenv": "^16.4.5",
+    "express": "^5.1.0",
+    "mssql": "^10.0.2",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/dotenv": "^8.2.0",
+    "@types/express": "^5.0.1",
+    "@types/mssql": "^9.1.5",
+    "@types/node": "^20.12.6",
+    "typescript": "^5.3.3",
+    "ts-node": "^10.9.2"
+  }
+}
