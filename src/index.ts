@@ -31,54 +31,17 @@ const server = new McpServer({
   version: "1.0.0",
   tools: [
     {
-      name: "execute-query",
-      description: "Execute a SQL query on the database",
+      name: "nl-to-sql",
+      description: "Convert a natural language question to SQL, execute it, and return results with an explanation",
       parameters: {
         type: "object",
         properties: {
-          query: {
+          question: {
             type: "string",
-            description: "SQL query to execute"
+            description: "Natural language question about the data"
           }
         },
-        required: ["query"]
-      }
-    },
-    {
-      name: "get-tables",
-      description: "Get a list of tables in the database",
-      parameters: {}
-    },
-    {
-      name: "get-table-data",
-      description: "Get data from a specific table",
-      parameters: {
-        type: "object",
-        properties: {
-          tableName: {
-            type: "string",
-            description: "Name of the table to query"
-          },
-          limit: {
-            type: "number",
-            description: "Maximum number of rows to return"
-          }
-        },
-        required: ["tableName"]
-      }
-    },
-    {
-      name: "get-table-schema",
-      description: "Get the schema of a specific table",
-      parameters: {
-        type: "object",
-        properties: {
-          tableName: {
-            type: "string",
-            description: "Name of the table to get schema for"
-          }
-        },
-        required: ["tableName"]
+        required: ["question"]
       }
     }
   ],
@@ -101,199 +64,7 @@ async function executeSQL(query: string): Promise<sql.IResult<any>> {
   }
 }
 
-// Execute query tool
-const executeQuery = server.tool(
-  "execute-query",
-  {
-    query: z.string().describe("SQL query to execute")
-  },
-  async (args, _extra) => {
-    try {
-      const { query } = args;
-      if (!query) {
-        return {
-          content: [{ type: "text", text: "Query parameter is required" }]
-        };
-      }
-      
-      // Prevent certain dangerous operations
-      const lowercaseQuery = query.toLowerCase();
-      if (lowercaseQuery.includes("drop ") || 
-          lowercaseQuery.includes("delete ") || 
-          lowercaseQuery.includes("truncate ") ||
-          lowercaseQuery.includes("alter ")) {
-        return {
-          content: [{ type: "text", text: "For security reasons, DROP, DELETE, TRUNCATE, and ALTER operations are not allowed" }]
-        };
-      }
-      
-      const result = await executeSQL(query);
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(result.recordset || result, null, 2)
-          }
-        ]
-      };
-    } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error executing query: ${errorMessage}`
-          }
-        ]
-      };
-    }
-  }
-);
-
-// Get tables tool
-const getTables = server.tool(
-  "get-tables",
-  {},
-  async (_args, _extra) => {
-    try {
-      const query = `SELECT TABLE_NAME 
-                    FROM INFORMATION_SCHEMA.TABLES 
-                    WHERE TABLE_TYPE = 'BASE TABLE'
-                    ORDER BY TABLE_NAME`;
-      const result = await executeSQL(query);
-      
-      const tableNames = result.recordset.map((record: { TABLE_NAME: string }) => record.TABLE_NAME).join(", ");
-      
-      return {
-        content: [
-          {
-            type: "text",
-            text: tableNames || "No tables found"
-          }
-        ]
-      };
-    } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error getting tables: ${errorMessage}`
-          }
-        ]
-      };
-    }
-  }
-);
-
-// Get table data tool
-const getTableData = server.tool(
-  "get-table-data",
-  {
-    tableName: z.string().describe("Name of the table to query"),
-    limit: z.number().optional().describe("Maximum number of rows to return")
-  },
-  async (args, _extra) => {
-    try {
-      const { tableName, limit = 100 } = args;
-      if (!tableName) {
-        return {
-          content: [{ type: "text", text: "Table name parameter is required" }]
-        };
-      }
-      
-      // Validate table name to prevent SQL injection
-      const tableValidationQuery = `SELECT TABLE_NAME 
-                                  FROM INFORMATION_SCHEMA.TABLES 
-                                  WHERE TABLE_TYPE = 'BASE TABLE' 
-                                  AND TABLE_NAME = '${tableName}'`;
-      const validationResult = await executeSQL(tableValidationQuery);
-      
-      if (validationResult.recordset.length === 0) {
-        return {
-          content: [{ type: "text", text: `Table '${tableName}' not found` }]
-        };
-      }
-      
-      const query = `SELECT TOP ${limit} * FROM [${tableName}]`;
-      const result = await executeSQL(query);
-      
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(result.recordset, null, 2)
-          }
-        ]
-      };
-    } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error getting table data: ${errorMessage}`
-          }
-        ]
-      };
-    }
-  }
-);
-
-// Get table schema tool
-const getTableSchema = server.tool(
-  "get-table-schema",
-  {
-    tableName: z.string().describe("Name of the table to get schema for")
-  },
-  async (args, _extra) => {
-    try {
-      const { tableName } = args;
-      if (!tableName) {
-        return {
-          content: [{ type: "text", text: "Table name parameter is required" }]
-        };
-      }
-      
-      const query = `SELECT 
-                      COLUMN_NAME, 
-                      DATA_TYPE, 
-                      CHARACTER_MAXIMUM_LENGTH,
-                      IS_NULLABLE,
-                      COLUMN_DEFAULT
-                    FROM INFORMATION_SCHEMA.COLUMNS
-                    WHERE TABLE_NAME = '${tableName}'
-                    ORDER BY ORDINAL_POSITION`;
-      
-      const result = await executeSQL(query);
-      
-      if (result.recordset.length === 0) {
-        return {
-          content: [{ type: "text", text: `Table '${tableName}' not found or has no columns` }]
-        };
-      }
-      
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(result.recordset, null, 2)
-          }
-        ]
-      };
-    } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error getting table schema: ${errorMessage}`
-          }
-        ]
-      };
-    }
-  }
-);
+// All other tool implementations removed - keeping only nl-to-sql
 
 const app = express();
 
@@ -331,6 +102,185 @@ app.get("/", (_req: Request, res: Response) => {
 
 // Get the port from environment variable for Azure or use default
 const PORT = process.env.PORT || process.env.WEBSITES_PORT || 3001;
+
+// Natural language to SQL tool
+const nlToSql = server.tool(
+  "nl-to-sql",
+  {
+    question: z.string().describe("Natural language question about the data")
+  },
+  async (args, _extra) => {
+    try {
+      const { question } = args;
+      if (!question) {
+        return {
+          content: [{ type: "text", text: "Question parameter is required" }]
+        };
+      }
+      
+      // A simple approach to convert natural language to SQL
+      // In a production environment, this would use an LLM API
+      let sqlQuery = "";
+      let explanation = "";
+      
+      // First get the list of tables to use in our response
+      const tablesQuery = `SELECT TABLE_NAME 
+                         FROM INFORMATION_SCHEMA.TABLES 
+                         WHERE TABLE_TYPE = 'BASE TABLE'
+                         ORDER BY TABLE_NAME`;
+      const tablesResult = await executeSQL(tablesQuery);
+      const availableTables = tablesResult.recordset.map((record: { TABLE_NAME: string }) => record.TABLE_NAME);
+      
+      // Simple pattern matching for common questions
+      const lowercaseQuestion = question.toLowerCase();
+      
+      if (lowercaseQuestion.includes("all tables") || 
+          lowercaseQuestion.includes("list tables") || 
+          lowercaseQuestion.includes("show tables")) {
+        sqlQuery = tablesQuery;
+        explanation = "This query lists all tables in the database.";
+      } 
+      else if (lowercaseQuestion.match(/schema (?:of|for) ([\w_]+)/i) || 
+               lowercaseQuestion.match(/describe ([\w_]+)/i) || 
+               lowercaseQuestion.match(/columns (?:of|in|from) ([\w_]+)/i)) {
+        // Extract table name from question
+        const match = lowercaseQuestion.match(/schema (?:of|for) ([\w_]+)/i) || 
+                     lowercaseQuestion.match(/describe ([\w_]+)/i) ||
+                     lowercaseQuestion.match(/columns (?:of|in|from) ([\w_]+)/i);
+        
+        if (match && match[1]) {
+          const tableName = match[1].trim();
+          // Validate table name
+          if (availableTables.map(t => t.toLowerCase()).includes(tableName.toLowerCase())) {
+            const actualTableName = availableTables.find(t => t.toLowerCase() === tableName.toLowerCase());
+            sqlQuery = `SELECT 
+                        COLUMN_NAME, 
+                        DATA_TYPE, 
+                        CHARACTER_MAXIMUM_LENGTH,
+                        IS_NULLABLE
+                      FROM INFORMATION_SCHEMA.COLUMNS
+                      WHERE TABLE_NAME = '${actualTableName}'
+                      ORDER BY ORDINAL_POSITION`;
+            explanation = `This query returns the schema (column definitions) for the ${actualTableName} table.`;
+          } else {
+            return {
+              content: [{ type: "text", text: `Table '${tableName}' was not found in the database. Available tables: ${availableTables.join(', ')}` }]
+            };
+          }
+        }
+      } 
+      else if (lowercaseQuestion.match(/(?:show|select|get|retrieve|find|list) .*? from ([\w_]+)/i)) {
+        // Extract table name from question
+        const match = lowercaseQuestion.match(/(?:show|select|get|retrieve|find|list) .*? from ([\w_]+)/i);
+        
+        if (match && match[1]) {
+          const tableName = match[1].trim();
+          // Validate table name
+          if (availableTables.map(t => t.toLowerCase()).includes(tableName.toLowerCase())) {
+            const actualTableName = availableTables.find(t => t.toLowerCase() === tableName.toLowerCase());
+            let limit = 100;
+            
+            // Check if there's a limit mentioned in the question
+            const limitMatch = lowercaseQuestion.match(/(?:top|first|limit) (\d+)/i);
+            if (limitMatch && limitMatch[1]) {
+              limit = parseInt(limitMatch[1]);
+            }
+            
+            // Check if there's a where clause
+            let whereClause = "";
+            const whereMatch = lowercaseQuestion.match(/where ([^.]+)(?:\.|$)/i);
+            if (whereMatch && whereMatch[1]) {
+              // This is a very simplistic approach - in a real implementation
+              // you'd use NLP to parse the condition properly
+              const condition = whereMatch[1].trim();
+              whereClause = `WHERE ${condition}`;
+            }
+            
+            sqlQuery = `SELECT TOP ${limit} * FROM [${actualTableName}] ${whereClause}`;
+            explanation = `This query returns up to ${limit} rows from the ${actualTableName} table${whereClause ? ' with the specified condition' : ''}.`;
+          } else {
+            return {
+              content: [{ type: "text", text: `Table '${tableName}' was not found in the database. Available tables: ${availableTables.join(', ')}` }]
+            };
+          }
+        }
+      }
+      else if (lowercaseQuestion.match(/count .*? from ([\w_]+)/i) || 
+               lowercaseQuestion.match(/how many .*? in ([\w_]+)/i)) {
+        // Extract table name from question
+        const match = lowercaseQuestion.match(/count .*? from ([\w_]+)/i) || 
+                     lowercaseQuestion.match(/how many .*? in ([\w_]+)/i);
+        
+        if (match && match[1]) {
+          const tableName = match[1].trim();
+          // Validate table name
+          if (availableTables.map(t => t.toLowerCase()).includes(tableName.toLowerCase())) {
+            const actualTableName = availableTables.find(t => t.toLowerCase() === tableName.toLowerCase());
+            
+            // Check if there's a where clause
+            let whereClause = "";
+            const whereMatch = lowercaseQuestion.match(/where ([^.]+)(?:\.|$)/i);
+            if (whereMatch && whereMatch[1]) {
+              const condition = whereMatch[1].trim();
+              whereClause = `WHERE ${condition}`;
+            }
+            
+            sqlQuery = `SELECT COUNT(*) AS RecordCount FROM [${actualTableName}] ${whereClause}`;
+            explanation = `This query counts the number of records in the ${actualTableName} table${whereClause ? ' with the specified condition' : ''}.`;
+          } else {
+            return {
+              content: [{ type: "text", text: `Table '${tableName}' was not found in the database. Available tables: ${availableTables.join(', ')}` }]
+            };
+          }
+        }
+      }
+      else {
+        // If we can't match a pattern, return a helpful message
+        return {
+          content: [{ 
+            type: "text", 
+            text: `I couldn't convert your question to SQL. Here are some example questions you can ask:\n\n` +
+                  `- List all tables\n` +
+                  `- Show schema of [table_name]\n` +
+                  `- Get data from [table_name]\n` +
+                  `- Count records in [table_name]\n\n` +
+                  `Available tables: ${availableTables.join(', ')}`
+          }]
+        };
+      }
+      
+      // If we got here, we have a valid SQL query
+      if (sqlQuery) {
+        // Execute the query
+        const result = await executeSQL(sqlQuery);
+        
+        // Format the response
+        return {
+          content: [
+            { type: "text", text: `Question: ${question}\n\n` },
+            { type: "text", text: `SQL Query: ${sqlQuery}\n\n` },
+            { type: "text", text: `Explanation: ${explanation}\n\n` },
+            { type: "text", text: `Results:\n${JSON.stringify(result.recordset || result, null, 2)}` }
+          ]
+        };
+      } else {
+        return {
+          content: [{ type: "text", text: "Unable to generate a SQL query for your question." }]
+        };
+      }
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error processing natural language query: ${errorMessage}`
+          }
+        ]
+      };
+    }
+  }
+);
 
 app.listen(PORT, () => {
   console.log(`Server is running at http://localhost:${PORT}`);
